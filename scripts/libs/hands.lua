@@ -1,113 +1,6 @@
 local uevrUtils = require("libs/uevr_utils")
 local controllers = require("libs/controllers")
 local animation = require("libs/animation")
-local handAnimations = require("addons/hand_animations")
---[[
-Instruction for positioning hands
-	1) Figure out in the UEVR UI how to access the skeletal mesh component that contains the hands. In TOW it is pawn.FPVMesh
-		In HL it is the hands and gloves components that are children of the pawn.Mesh
-	2) Call animation.logBoneNames(skeletalMeshComponent) where skeletalMeshComponent is the thing found in step 1.
-	3) In the log you will see a list of names for bones in the skeleton. Find the one for either the wrist or lower arm 
-		joint (depending on how much of the arm you want to see) for both the left and right arms. Assign these values 
-		to leftJointName and rightJointName below
-	4) Find the left and right shoulders the same way and assign them to leftShoulderName and rightShoulderName. Note that if
-		you still have visual artifacts when using the shoulder bone you may need to use the bone one step closer to the root 
-	5) Call animation.getHierarchyForBone(skeletalMeshComponent,rightJointName)
-		For TOW this is animation.getHierarchyForBone(pawn.FPVMesh, "r_LowerArm_JNT")
-	6) In the log you will see the bone hierarchy back to the root. Take the root name (the one before "None") and 
-		put it in defaultRootBoneName
-	7) In your main.lua call 
-			hands.reset() 
-		in on_level_change(level)
-		If you dont already have motionControllers set up, call
-			controllers.onLevelChange()
-			controllers.createController(0)
-			controllers.createController(1)
-		in on_level_change(level) as well
-	8) In your main.lua call
-			if not hands.exists() then
-				hands.create(skeletalMeshComponent)
-			end
-		in the on_lazy_poll() function where skeletalMeshComponent is the component you found in step 1
-	9) Run the game and the hands should be relatively close to where you would expect them to be. They
-		will likely be rotated the wrong way but you can use code similar to the following to make adjustments
-		in realtime while wearing the hmd to get them positioned perfectly. The updated positions
-		will be printed to the log so you can take the last printed position and put the info in either
-		currentRightRotation, currentLeftRotation, currentRightLocation or currentLeftLocation below
-		
-			local currentHand = 1
-			register_key_bind("y", function()
-				--hands.adjustLocation(currentHand, 1, 1)
-				hands.adjustRotation(currentHand, 1, 45)
-			end)
-			register_key_bind("b", function()
-				--hands.adjustLocation(currentHand, 1, -1)
-				hands.adjustRotation(currentHand, 1, -45)
-			end)
-			register_key_bind("h", function()
-				--hands.adjustLocation(currentHand, 2, 1)
-				hands.adjustRotation(currentHand, 2, 45)
-			end)
-			register_key_bind("g", function()
-				--hands.adjustLocation(currentHand, 2, -1)
-				hands.adjustRotation(currentHand, 2, -45)
-			end)
-			register_key_bind("n", function()
-				--hands.adjustLocation(currentHand, 3, 1)
-				hands.adjustRotation(currentHand, 3, 45)
-			end)
-			register_key_bind("v", function()
-				--hands.adjustLocation(currentHand, 3, -1)
-				hands.adjustRotation(currentHand, 3, -45)
-			end)
-
-
-Instructions for getting hand animations
-	1) Get a list of all the bones for your skeletal component
-		animation.logBoneNames(rightHandComponent)
-	2) Create a bonelist by viewing the list from step one. A bonelist is an array of the
-		indexes of the knuckle bone of each finger starting from the thumb for each hand
-		The list should be length 10, one for each finger
-		local handBoneList = {50, 41, 46, 29, 34, 65, 70, 75, 80, 85}
-	3) Log the bone rotators for all of the fingers
-		animation.logBoneRotators(rightHandComponent, handBoneList)
-	4) The printout gives you the default pose angles that can be used in the hand_animations.lua file. These can be
-		your resting pose angles if you wish (the "off" values)
-	5) Map keypresses to calls to modify bones dynamically as you view them in game. Once you have a hand posed as you like, use the printed values in	
-		the hand_animations files(the "on" values)
-		example keypress mapping:
-			local currentIndex = 1
-			local currentFinger = 1
-			RegisterKeyBind(Key.NUM_EIGHT, function()
-				setFingerAngles(currentFinger, currentIndex, 0, 5)
-			end)
-			RegisterKeyBind(Key.NUM_TWO, function()
-				setFingerAngles(currentFinger, currentIndex, 0, -5)
-			end)
-			RegisterKeyBind(Key.NUM_SIX, function()
-				setFingerAngles(currentFinger, currentIndex, 1, 5)
-			end)
-			RegisterKeyBind(Key.NUM_FIVE, function() == switch the current finger
-				currentFinger = currentFinger + 1
-				if currentFinger > 10 then currentFinger = 1 end
-				print("Current finger joint", currentFinger, currentIndex)
-			end)
-			RegisterKeyBind(Key.NUM_FOUR, function()
-				setFingerAngles(currentFinger, currentIndex, 1, -5)
-			end)
-			RegisterKeyBind(Key.NUM_NINE, function()
-				setFingerAngles(currentFinger, currentIndex, 2, 5)
-			end)
-			RegisterKeyBind(Key.NUM_THREE, function()
-				setFingerAngles(currentFinger, currentIndex, 2, -5)
-			end)
-			RegisterKeyBind(Key.NUM_ZERO, function() --switch to the next bone in the current finger
-				currentIndex = currentIndex + 1
-				if currentIndex > 3 then currentIndex = 1 end
-				print("Current finger joint", currentFinger, currentIndex)
-			end)
-
-]]--
 
 local M = {}
 
@@ -164,7 +57,7 @@ function M.getHandComponent(hand, componentName)
 	end
 end 
 
-function M.create(skeletalMeshComponent, definition)
+function M.create(skeletalMeshComponent, definition, handAnimations)
 	if uevrUtils.validate_object(skeletalMeshComponent) ~= nil and definition ~= nil then
 		for name, skeletalMeshDefinition in pairs(definition) do
 			M.print("Creating hand component: " .. name )

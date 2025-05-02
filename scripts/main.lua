@@ -4,8 +4,9 @@ uevrUtils.initUEVR(uevr)
 local flickerFixer = require("libs/flicker_fixer")
 local controllers = require("libs/controllers")
 local animation = require("libs/animation")
-local hands = require("addons/hands")
+local hands = require("libs/hands")
 local weapons = require("addons/weapons")
+local handAnimations = require("addons/hand_animations")
 
 local handParams = 
 {
@@ -52,7 +53,7 @@ end
 function on_lazy_poll()
 	if not hands.exists() then
 		--hands.debug(pawn.Mesh,1,"lowerarm_r")			
-		hands.create(pawn.Mesh, handParams)
+		hands.create(pawn.Mesh, handParams, handAnimations)
 		uevrUtils.fixMeshFOV(hands.getHandComponent(0), "UsePanini", 0.0, true, true, true)
 		uevrUtils.fixMeshFOV(hands.getHandComponent(1), "UsePanini", 0.0, true, true, true)
 	end

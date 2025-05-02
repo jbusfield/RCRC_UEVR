@@ -90,6 +90,13 @@ Usage
 			local pos = pawn:K2_GetActorLocation()
 			local actor = uevrUtils.spawn_actor( uevrUtils.get_transform({X=pos.X, Y=pos.Y, Z=pos.Z}), 1, nil)
 		
+	uevrUtils.getValid(object, (optional)properties) -- returns a valid object or property of an object or nil if none is found. Use this
+		in place of endless nested checks for nil on objects and their properties. Properties are passed in as an array of hierarchical 
+		property names. The first example shows how to get the property pawn.Weapon.WeaponMesh
+		example:
+			local mesh = uevrUtils.getValid(pawn,{"Weapon","WeaponMesh"})
+			local validPawn = uevrUtils.getValid(pawn) -- gets a valid pawn or nil
+	
 	uevrUtils.validate_object(object) - if the object is returned from this function then it is not nil and it exists
 		if uevrUtils.validate_object(object) ~- nil then 
 			print("Good object")
@@ -204,6 +211,11 @@ Usage
 			local rightComponent = uevrUtils.createStaticMeshComponent("Sphere") --beware of duplicate short names
 
 	uevrUtils.createWidgetComponent(widget, (optional)removeFromViewport, (optional)twoSided, (optional)drawSize) - creates a widget component and assigns a widget to it
+	
+	uevrUtils.fixMeshFOV(mesh, propertyName, value, (optional)includeChildren, (optional)includeNiagara, (optional)showDebug) --Removes the FOV distortions that 
+		many flat FPS games apply to player and weapon meshes using ScalarParameterValues
+		example:
+			uevrUtils.fixMeshFOV(hands.getHandComponent(0), "UsePanini", 0.0, true, true, true)
 	
 	uevrUtils.registerOnInputGetStateCallback(func) - register for a your own callback when the uevr callback fires
 
