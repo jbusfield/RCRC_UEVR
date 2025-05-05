@@ -1104,14 +1104,14 @@ function M.getLoadedAsset(pathStr)
 	return assetRegistryHelper:GetAsset(fAssetData) 
 end
 
-function M.copyMaterials(fromComponent, toComponent)
+function M.copyMaterials(fromComponent, toComponent, showDebug)
 	if fromComponent ~= nil and toComponent ~= nil then
 		local materials = fromComponent:GetMaterials()
 		if materials ~= nil then
-			M.print("Copying materials. Found " .. #materials .. " materials on fromComponent")
+			if showDebug == true then M.print("Copying materials. Found " .. #materials .. " materials on fromComponent") end
 			for i = 1 , #materials do
 				toComponent:SetMaterial(i - 1, materials[i])
-				M.print("Material index " .. i .. ": " .. materials[i]:get_full_name())
+				if showDebug == true then M.print("Material index " .. i .. ": " .. materials[i]:get_full_name()) end
 			end
 		end
 	end
@@ -1130,35 +1130,42 @@ function M.getChildComponent(parent, name)
 	return childComponent
 end
 
-function M.detachAndDestroyComponent(component, destroyOwner)
+function M.detachAndDestroyComponent(component, destroyOwner, showDebug)
 	if component ~= nil then
-		M.print("Detaching " .. component:get_full_name())
+		if showDebug == true then M.print("Detaching " .. component:get_full_name()) end
 		component:DetachFromParent(true,false)
-		M.print("Component detached")
+		if showDebug == true then M.print("Component detached") end
 		pcall(function()
-			M.print("Getting component owner")
+			if showDebug == true then M.print("Getting component owner") end
 			local actor = component:GetOwner()
-			if actor ~= nil and actor.K2_DestroyComponent ~= nil then
-				M.print("Got component owner " .. actor:get_full_name())
-				actor:K2_DestroyComponent(component)
-				M.print("Destroyed component " .. component:get_full_name())
+			if actor ~= nil then
+				if showDebug == true then M.print("Got component owner " .. actor:get_full_name()) end
+				if actor.K2_DestroyComponent ~= nil then
+					actor:K2_DestroyComponent(component)
+					if showDebug == true then M.print("Destroyed component ") end
+				elseif component.K2_DestroyComponent ~= nil then
+					component:K2_DestroyComponent(component)
+					if showDebug == true then M.print("Destroyed component ") end
+				end
 				if destroyOwner == nil then destroyOwner = false end
 				if destroyOwner then
 					actor:K2_DestroyActor()
 				end
+			else
+				if showDebug == true then M.print("Component owner not found") end
 			end
 		end)	
 	end
 end
 
-function M.createPoseableMeshFromSkeletalMesh(skeletalMeshComponent, parent)
-	M.print("Creating PoseableMeshComponent from " .. skeletalMeshComponent:get_full_name())
+function M.createPoseableMeshFromSkeletalMesh(skeletalMeshComponent, parent, showDebug)
+	if showDebug == true then M.print("Creating PoseableMeshComponent from " .. skeletalMeshComponent:get_full_name()) end
 	local poseableComponent = nil
 	if skeletalMeshComponent ~= nil then
 		poseableComponent = M.create_component_of_class("Class /Script/Engine.PoseableMeshComponent", false, nil, nil, parent)
 		--poseableComponent:SetCollisionEnabled(0, false)
 		if poseableComponent ~= nil then
-			M.print("Created " .. poseableComponent:get_full_name())
+			if showDebug == true then M.print("Created " .. poseableComponent:get_full_name()) end
 			poseableComponent.SkeletalMesh = skeletalMeshComponent.SkeletalMesh		
 			--force initial update
 			if poseableComponent.SetMasterPoseComponent ~= nil then
@@ -1168,14 +1175,14 @@ function M.createPoseableMeshFromSkeletalMesh(skeletalMeshComponent, parent)
 				poseableComponent:SetLeaderPoseComponent(skeletalMeshComponent, true)
 				poseableComponent:SetLeaderPoseComponent(nil, false)
 			end
-			M.print("Master pose updated")
+			if showDebug == true then M.print("Master pose updated") end
 			
 			pcall(function()
 				poseableComponent:CopyPoseFromSkeletalComponent(skeletalMeshComponent)	
-				M.print("Pose copied")
+				if showDebug == true then M.print("Pose copied") end
 			end)	
 		
-			M.copyMaterials(skeletalMeshComponent, poseableComponent)
+			M.copyMaterials(skeletalMeshComponent, poseableComponent, showDebug)
 		else 
 			M.print("PoseableMeshComponent could not be created")
 		end
@@ -1258,7 +1265,7 @@ function M.fixMeshFOV(mesh, propertyName, value, includeChildren, includeNiagara
 		if mesh ~= nil and mesh.GetMaterials ~= nil then
 			local materials = mesh:GetMaterials()
 			if materials ~= nil then
-				M.print("Found " .. #materials .. " materials in fixMeshFOV", logLevel)
+				if showDebug == true then M.print("Found " .. #materials .. " materials in fixMeshFOV", logLevel) end
 				for i, material in ipairs(materials) do
 					if material:is_a(M.get_class("Class /Script/Engine.MaterialInstanceConstant")) then
 						material = mesh:CreateAndSetMaterialInstanceDynamicFromMaterial(i-1, material)
@@ -1299,7 +1306,7 @@ function M.fixMeshFOV(mesh, propertyName, value, includeChildren, includeNiagara
 						
 						if includeNiagara == true and child:is_a(M.get_class("Class /Script/Niagara.NiagaraComponent")) then
 							child:SetNiagaraVariableFloat(propertyName, value)
-							M.print("Child Niagara Material: " .. child:get_full_name(),logLevel)
+							if showDebug == true then M.print("Child Niagara Material: " .. child:get_full_name(),logLevel) end
 						end
 					end
 				end

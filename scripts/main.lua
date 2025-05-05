@@ -16,7 +16,7 @@ local handParams =
 		{
 			Name = "lowerarm_l",
 			Rotation = {0, 90, -90},
-			Location = {-3.6, -40.5, -1.5},	
+			Location = {-2.8, -40.7, -1.5},	
 			Scale = {1, 1, 1},			
 			AnimationID = "left_hand"
 		},
@@ -24,7 +24,7 @@ local handParams =
 		{
 			Name = "lowerarm_r",
 			Rotation = {0, -90, 90},
-			Location = {-3.6, -40.5, -1.5},		
+			Location = {-2.8, -40.7, -1.5},		
 			Scale = {1, 1, 1},			
 			AnimationID = "right_hand"
 		}
@@ -32,14 +32,79 @@ local handParams =
 }
 local knuckleBoneList = {24, 12, 15, 21, 18, 48, 36, 39, 45, 42}
 
+local isInCinematic = false
+
+local wasInCinematic = false
+function updateViewState()
+	if isInCinematic and not wasInCinematic then
+		uevrUtils.print("Start cinematic")
+		--uevr.params.vr.set_mod_value("VR_EnableGUI", "false")
+		-- uevrUtils.set_2D_mode(true)
+		uevr.params.vr.set_mod_value("UI_FollowView", "false")
+		uevr.params.vr.set_aim_method(0)
+		hands.hideHands(true)
+		-- uevr.params.vr.set_mod_value("UI_Distance", "2.0")
+		-- uevr.params.vr.set_mod_value("UI_Size", "2.0")
+	elseif not isInCinematic and wasInCinematic then
+		uevrUtils.print("End cinematic")
+		--uevr.params.vr.set_mod_value("VR_EnableGUI", "true")
+		-- uevrUtils.set_2D_mode(false)
+		uevr.params.vr.set_mod_value("UI_FollowView", "true")
+		uevr.params.vr.set_aim_method(2)
+		hands.hideHands(false)
+		-- uevr.params.vr.set_mod_value("UI_Distance", "0.8")
+		-- uevr.params.vr.set_mod_value("UI_Size", "0.50")
+	end
+	wasInCinematic = isInCinematic
+	
+end
+
+function handleLevelChange(level)
+	local levelName = level:get_full_name()
+	uevrUtils.print(levelName)
+	if  string.find(levelName, "MAP_StartingMap") then
+		uevr.params.vr.set_aim_method(0)
+		uevr.params.vr.set_mod_value("UI_FollowView", "false")
+	else
+		uevr.params.vr.set_aim_method(2)
+		uevr.params.vr.set_mod_value("UI_FollowView", "true")
+	end
+		
+end
+
+
+local canCreateHands = false
 function on_level_change(level)
-	print("Level changed\n")
-	flickerFixer.create()
+	uevrUtils.print("Level changed")
+	--flickerFixer.create()
 	controllers.onLevelChange()
 	controllers.createController(0)
 	controllers.createController(1)
 	controllers.createController(2)
+	canCreateHands = false
 	hands.reset()
+	wasInCinematic = false
+	handleLevelChange(level)
+	
+	--get rid of black bars in cinematics
+	for i, slot in ipairs(pawn["FPPHudWidget"]["WB HUD"]["CanvasPanel_0"]["Slots"]) do
+		if string.find(slot.Content:get_full_name(), "Image_FrameTop") or string.find(slot.Content:get_full_name(), "Image_FrameBot") then
+			slot.Content:SetVisibility(1)
+		end
+	end
+	--Fix the shooting gallery
+	local modifiers = uevrUtils.find_all_instances("Class /Script/Game.RotationLimitCameraModifier", false)
+	for i, mesh in ipairs(modifiers) do
+		if mesh:get_fname():to_string() == "RotationLimitCameraModifier_0" then
+			mesh:DisableModifier(true)
+			break
+		end
+	end
+	uevr.api:get_player_controller(0).PlayerCameraManager.CachedCameraShakeMod:DisableModifier(true)
+
+	delay(2000, function()
+		canCreateHands = true
+	end)
 end
 
 function on_weapon_change(activeWeapon)
@@ -51,12 +116,20 @@ function on_weapon_change(activeWeapon)
 end
 
 function on_lazy_poll()
-	if not hands.exists() then
-		--hands.debug(pawn.Mesh,1,"lowerarm_r")			
+	if canCreateHands and not hands.exists() then
 		hands.create(pawn.Mesh, handParams, handAnimations)
-		uevrUtils.fixMeshFOV(hands.getHandComponent(0), "UsePanini", 0.0, true, true, true)
-		uevrUtils.fixMeshFOV(hands.getHandComponent(1), "UsePanini", 0.0, true, true, true)
+		local rightHand = hands.getHandComponent(1)
+		animation.setBoneSpaceLocalRotator(rightHand, "hand_r", uevrUtils.rotator(0, 0, -90))
+		uevrUtils.fixMeshFOV(hands.getHandComponent(0), "UsePanini", 0.0, true, true, false)
+		uevrUtils.fixMeshFOV(hands.getHandComponent(1), "UsePanini", 0.0, true, true, false)
+		uevrUtils.fixMeshFOV(pawn.Mesh, "UsePanini", 0.0, true, true, false)
+		local weaponMesh = uevrUtils.getValid(pawn,{"Weapon","WeaponMesh"})
+		if weaponMesh ~= nil then uevrUtils.fixMeshFOV(weaponMesh, "UsePanini", 0.0, true, true, false) end
 	end
+	
+	--pawn["FPPHudWidget"]["WB HUD"]["CanvasPanel_0"]:SetVisibility(isInCinematic and 1 or 0) --the black horizontal bars
+	--print(#pawn["FPPHudWidget"]["WB HUD"]["CanvasPanel_0"]["Slots"])
+	--for in #pawn["FPPHudWidget"]["WB HUD"]["CanvasPanel_0"]["Slots"]
 
 end
 
@@ -66,17 +139,58 @@ function on_xinput_get_state(retval, user_index, state)
 	end
 end
 
+
+local is_hidden = false
+local is_load = false
+local detective = falsee
+local is_input = false
+local is_view = false
+local interact_with = nil
+local is_interact = false
+local is_menu = false
+
 function on_post_engine_tick(engine, delta)
+	
+	if uevrUtils.getValid(pawn) ~= nil then
+		if is_hidden ~= pawn.bHidden then print("is_hidden changed",pawn.bHidden) end
+		if is_load ~= pawn.bNetLoadOnClient then print("is_load changed",pawn.bNetLoadOnClient) end
+		if detective ~= pawn.DetectiveModeComponent.bIsActive then print("detective changed",pawn.DetectiveModeComponent.bIsActive) end
+		if is_input ~= pawn.bInputEnabled then print("is_input changed",pawn.bInputEnabled) end
+		if is_view ~= pawn.bIsLocalViewTarget then print("is_view changed",pawn.bIsLocalViewTarget) end
+		if interact_with ~= pawn.PawnInteractionComponent.InteractionWith then print("interact_with changed",pawn.PawnInteractionComponent.InteractionWith) end
+		if is_interact ~= pawn.PawnInteractionComponent.InteractionTextHidden then print("is_interact changed",pawn.PawnInteractionComponent.InteractionTextHidden) end
+		if is_menu ~= uevrUtils.get_world().AuthorityGameMode.bIsInGameMenuShown then print("is_menu changed",uevrUtils.get_world().AuthorityGameMode.bIsInGameMenuShown) end
+		
+		is_hidden = pawn.bHidden
+		is_load = pawn.bNetLoadOnClient
+		detective = pawn.DetectiveModeComponent.bIsActive
+		is_input = pawn.bInputEnabled
+		is_view = pawn.bIsLocalViewTarget
+		interact_with = pawn.PawnInteractionComponent.InteractionWith
+		is_interact = pawn.PawnInteractionComponent.InteractionTextHidden
+		is_menu = uevrUtils.get_world().AuthorityGameMode.bIsInGameMenuShown
+		
+		if is_view and is_input then
+			isInCinematic = false
+		else
+			isInCinematic = true
+		end
+	end
+	
+	updateViewState()
 	weapons.attachWeapon(uevrUtils.getValid(pawn,{"Weapon","WeaponMesh"}))
 
 	local mesh = uevrUtils.getValid(pawn, {"Mesh"})
-	if mesh ~= nil and mesh.bVisible == true then
-		mesh:SetVisibility(false,false)
-		local activeWeapon = weapons.getActiveWeapon()
-		if activeWeapon ~= nil then
-			activeWeapon:SetVisibility(true,true)
-		end
-	end
+	if mesh ~= nil then mesh:call("SetRenderInMainPass", false) end
+	-- if mesh ~= nil and mesh.bVisible == true then
+		-- mesh:SetVisibility(false,false)
+		-- local activeWeapon = weapons.getActiveWeapon()
+		-- if uevrUtils.getValid(activeWeapon) ~= nil then
+			-- activeWeapon:SetVisibility(true, true)
+		-- end
+	-- end
+
+
 end
 
 
@@ -85,7 +199,7 @@ register_key_bind("F1", function()
 	--animation.logBoneNames(pawn.Mesh)
 	--animation.getHierarchyForBone(pawn.Mesh, "lowerarm_r")
 	--hands.createSkeletalVisualization()
-	--hands.enableHandAdjustments(knuckleBoneList)
+	hands.enableHandAdjustments(knuckleBoneList)
 	
 	-- local component = hands.getHandComponent(1)
 	-- component:CopyPoseFromSkeletalComponent(pawn.Mesh)

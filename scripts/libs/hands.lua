@@ -46,7 +46,7 @@ function M.reset()
 end
 
 function M.exists()
-	return M.getHandComponent(0) ~= nil
+	return M.getHandComponent(0) ~= nil or M.getHandComponent(1) ~= nil
 end
 
 -- if using multiple component like hands and gloves then include componentName or which one is picked will be random
@@ -72,7 +72,6 @@ function M.create(skeletalMeshComponent, definition, handAnimations)
 	else
 		M.print("SkeletalMesh component is nil or target joints are invalid in create" )
 	end
-	print(M.getHandComponent(0))
 end
 
 function M.createComponent(skeletalMeshComponent, name, hand, definition)
@@ -138,8 +137,20 @@ function M.handleInput(state, isHoldingWeapon)
 	else
 		local triggerValue = state.Gamepad.bRightTrigger
 		animation.updateAnimation("right_hand", "right_trigger_weapon", triggerValue > 100)
+		if uevrUtils.isButtonPressed(state, XINPUT_GAMEPAD_RIGHT_SHOULDER) then --allow for updating a messed up skeleton
+			animation.updateAnimation("right_hand", "right_grip_weapon", false)
+			animation.updateAnimation("right_hand", "right_grip_weapon", true)
+		end
 	end
 
+end
+
+function M.hideHands(val)
+	for name, components in pairs(handComponents) do
+		M.print("Hiding " .. components[0]:get_full_name() .. " hand components", LogLevel.Debug)
+		components[0]:SetVisibility(not val, true)	
+		components[1]:SetVisibility(not val, true)	
+	end
 end
 
 function M.destroyHands()
@@ -170,117 +181,129 @@ local currentHand = 1 -- 0-left  1-right
 local currentHandLabels = {"Left", "Right"}
 local currentIndex = 1	--1-knuckle 
 local currentFinger = 1 -- 1-10
+local currentFingerLabels = {"Left Thumb", "Left Index", "Left Middle", "Left Ring", "Left Pinky", "Right Thumb", "Right Index", "Right Middle", "Right Ring", "Right Pinky"}
 local positionDelta = 0.2
 local rotationDelta = 45
 local jointAngleDelta = 5
 
 function M.enableHandAdjustments(boneList, componentName)	
-	if boneList == nil or #boneList == 0 then
-		M.print("Call to enableHandAdjustments() failed because boneList is invalid", LogLevel.Warning)
+	handBoneList = boneList
+	M.print("Adjust Mode " .. adjustModeLabels[adjustMode])
+	if adjustMode == 3 then
+		M.print("Current finger:" .. currentFingerLabels[currentFinger] .. " finger joint:" .. currentIndex, LogLevel.Info)
 	else
-		handBoneList = boneList
+		M.print("Current hand: " .. currentHandLabels[currentHand+1], LogLevel.Info)
+	end
+	
+	register_key_bind("NumPadFive", function()
+		M.print("Num5 pressed")
+		adjustMode = (adjustMode % 3) + 1
 		M.print("Adjust Mode " .. adjustModeLabels[adjustMode])
 		if adjustMode == 3 then
-			M.print("Current finger:" .. currentFinger .. " finger joint:" .. currentIndex)
+			M.print("Current finger:" .. currentFingerLabels[currentFinger] .. " finger joint:" .. currentIndex, LogLevel.Info)
 		else
-			M.print("Current hand: " .. currentHandLabels[currentHand+1])
+			M.print("Current hand: " .. currentHandLabels[currentHand+1], LogLevel.Info)
 		end
-		
-		register_key_bind("NumPadFive", function()
-			M.print("Num5 pressed")
-			adjustMode = (adjustMode % 3) + 1
-			M.print("Adjust Mode " .. adjustModeLabels[adjustMode])
-		end)
+	end)
 
-		register_key_bind("NumPadNine", function()
-			M.print("Num9 pressed")
-			currentIndex = (currentIndex % 3) + 1
-			M.print("Current finger:" .. currentFinger .. " finger joint:" .. currentIndex)
-		end)
+	register_key_bind("NumPadNine", function()
+		M.print("Num9 pressed")
+		currentIndex = (currentIndex % 3) + 1
+		M.print("Current finger:" .. currentFingerLabels[currentFinger] .. " finger joint:" .. currentIndex, LogLevel.Info)
+	end)
 
-		register_key_bind("NumPadSeven", function()
-			M.print("Num7 pressed")
-			if adjustMode == 3 then
-				currentFinger = (currentFinger % 10) + 1
-				M.print("Current finger:" .. currentFinger .. " finger joint:" .. currentIndex)
-			else 
-				currentHand = (currentHand + 1) % 2
-				M.print("Current hand: " .. currentHandLabels[currentHand+1])
-			end
-		end)
+	register_key_bind("NumPadSeven", function()
+		M.print("Num7 pressed")
+		if adjustMode == 3 then
+			currentFinger = (currentFinger % 10) + 1
+			M.print("Current finger:" .. currentFingerLabels[currentFinger] .. " finger joint:" .. currentIndex, LogLevel.Info)
+		else 
+			currentHand = (currentHand + 1) % 2
+			M.print("Current hand: " .. currentHandLabels[currentHand+1], LogLevel.Info)
+		end
+	end)
 
-		register_key_bind("NumPadEight", function()
-			M.print("Num8 pressed")
-			if adjustMode == 1 then
-				M.adjustRotation(currentHand, 1, rotationDelta, componentName)
-			elseif adjustMode == 2 then
-				M.adjustLocation(currentHand, 1, positionDelta, componentName)
-			elseif adjustMode == 3 then
-				M.setFingerAngles(currentFinger, currentIndex, 0, jointAngleDelta, componentName)
-			end
-		end)
-		register_key_bind("NumPadTwo", function()
-			M.print("Num2 pressed")
-			if adjustMode == 1 then
-				M.adjustRotation(currentHand, 1, -rotationDelta)
-			elseif adjustMode == 2 then
-				M.adjustLocation(currentHand, 1, -positionDelta)
-			elseif adjustMode == 3 then
-				M.setFingerAngles(currentFinger, currentIndex, 0, -jointAngleDelta, componentName)
-			end
-		end)
+	register_key_bind("NumPadEight", function()
+		M.print("Num8 pressed")
+		if adjustMode == 1 then
+			M.adjustRotation(currentHand, 1, rotationDelta, componentName)
+		elseif adjustMode == 2 then
+			M.adjustLocation(currentHand, 1, positionDelta, componentName)
+		elseif adjustMode == 3 then
+			M.setFingerAngles(currentFinger, currentIndex, 0, jointAngleDelta, componentName)
+		end
+	end)
+	register_key_bind("NumPadTwo", function()
+		M.print("Num2 pressed")
+		if adjustMode == 1 then
+			M.adjustRotation(currentHand, 1, -rotationDelta)
+		elseif adjustMode == 2 then
+			M.adjustLocation(currentHand, 1, -positionDelta)
+		elseif adjustMode == 3 then
+			M.setFingerAngles(currentFinger, currentIndex, 0, -jointAngleDelta, componentName)
+		end
+	end)
 
-		register_key_bind("NumPadFour", function()
-			M.print("Num4 pressed")
-			if adjustMode == 1 then
-				M.adjustRotation(currentHand, 2, rotationDelta, componentName)
-			elseif adjustMode == 2 then
-				M.adjustLocation(currentHand, 2, positionDelta, componentName)
-			elseif adjustMode == 3 then
-				M.setFingerAngles(currentFinger, currentIndex, 1, jointAngleDelta, componentName)
-			end
-		end)
-		register_key_bind("NumPadSix", function()
-			M.print("Num6 pressed")
-			if adjustMode == 1 then
-				M.adjustRotation(currentHand, 2, -rotationDelta, componentName)
-			elseif adjustMode == 2 then
-				M.adjustLocation(currentHand, 2, -positionDelta, componentName)
-			elseif adjustMode == 3 then
-				M.setFingerAngles(currentFinger, currentIndex, 1, -jointAngleDelta, componentName)
-			end
-		end)
+	register_key_bind("NumPadFour", function()
+		M.print("Num4 pressed")
+		if adjustMode == 1 then
+			M.adjustRotation(currentHand, 2, rotationDelta, componentName)
+		elseif adjustMode == 2 then
+			M.adjustLocation(currentHand, 2, positionDelta, componentName)
+		elseif adjustMode == 3 then
+			M.setFingerAngles(currentFinger, currentIndex, 1, jointAngleDelta, componentName)
+		end
+	end)
+	register_key_bind("NumPadSix", function()
+		M.print("Num6 pressed")
+		if adjustMode == 1 then
+			M.adjustRotation(currentHand, 2, -rotationDelta, componentName)
+		elseif adjustMode == 2 then
+			M.adjustLocation(currentHand, 2, -positionDelta, componentName)
+		elseif adjustMode == 3 then
+			M.setFingerAngles(currentFinger, currentIndex, 1, -jointAngleDelta, componentName)
+		end
+	end)
 
-		register_key_bind("NumPadThree", function()
-			M.print("Num3 pressed")
-			if adjustMode == 1 then
-				M.adjustRotation(currentHand, 3, rotationDelta, componentName)
-			elseif adjustMode == 2 then
-				M.adjustLocation(currentHand, 3, positionDelta, componentName)
-			elseif adjustMode == 3 then
-				M.setFingerAngles(currentFinger, currentIndex, 2, jointAngleDelta, componentName)
-			end
-		end)
-		register_key_bind("NumPadOne", function()
-			M.print("Num1 pressed")
-			if adjustMode == 1 then
-				M.adjustRotation(currentHand, 3, -rotationDelta, componentName)
-			elseif adjustMode == 2 then
-				M.adjustLocation(currentHand, 3, -positionDelta, componentName)
-			elseif adjustMode == 3 then
-				M.setFingerAngles(currentFinger, currentIndex, 2, -jointAngleDelta, componentName)
-			end
-		end)
-	end
+	register_key_bind("NumPadThree", function()
+		M.print("Num3 pressed")
+		if adjustMode == 1 then
+			M.adjustRotation(currentHand, 3, rotationDelta, componentName)
+		elseif adjustMode == 2 then
+			M.adjustLocation(currentHand, 3, positionDelta, componentName)
+		elseif adjustMode == 3 then
+			M.setFingerAngles(currentFinger, currentIndex, 2, jointAngleDelta, componentName)
+		end
+	end)
+	register_key_bind("NumPadOne", function()
+		M.print("Num1 pressed")
+		if adjustMode == 1 then
+			M.adjustRotation(currentHand, 3, -rotationDelta, componentName)
+		elseif adjustMode == 2 then
+			M.adjustLocation(currentHand, 3, -positionDelta, componentName)
+		elseif adjustMode == 3 then
+			M.setFingerAngles(currentFinger, currentIndex, 2, -jointAngleDelta, componentName)
+		end
+	end)
 end
 
 function M.setFingerAngles(fingerIndex, jointIndex, angleID, angle, componentName)
-	componentName = getComponentName(componentName)
-	if componentName == "" then
-		M.print("Could not adjust rotation because component is undefined")
-	else	
-		animation.setFingerAngles(fingerIndex < 6 and handDefinitions[debugComponentName][0] or handDefinitions[debugComponentName][1], handBoneList, fingerIndex, jointIndex, angleID, angle)
+	if handBoneList == nil or #handBoneList ==0 then
+		M.print("Could not adjust fingers because hand bonelist in invalid")
+	else
+		componentName = getComponentName(componentName)
+		if componentName == "" then
+			M.print("Could not adjust rotation because component is undefined")
+		else	
+			local component = M.getHandComponent(fingerIndex < 6 and 0 or 1, componentName)
+			animation.setFingerAngles(component, handBoneList, fingerIndex, jointIndex, angleID, angle)
+		end
 	end
+end
+
+function M.printHandTranforms(transforms)
+	M.print("Rotation = {" .. transforms["Rotation"][1] .. ", " .. transforms["Rotation"][2] .. ", "  .. transforms["Rotation"][3] ..  "}", LogLevel.Info)
+	M.print("Location = {" .. transforms["Location"][1] .. ", " .. transforms["Location"][2] .. ", "  .. transforms["Location"][3] ..  "}", LogLevel.Info)
 end
 
 function M.adjustRotation(hand, axis, delta, componentName)
@@ -288,20 +311,23 @@ function M.adjustRotation(hand, axis, delta, componentName)
 	if componentName == "" then
 		M.print("Could not adjust rotation because component is undefined")
 	else	
-		local definition = handDefinitions[debugComponentName][hand]
+		local handStr = hand == 0 and "Left" or "Right"
+		local definition = handDefinitions[componentName][handStr]
 		if definition ~= nil then
 			local jointName = definition["Name"]
 			if jointName ~= nil and jointName ~= "" then
 				local location = getValidVector(definition, "Location", {0,0,0})
 				--local rotation = getValidRotator(definition, "Rotation", {0,0,0})
-				if definition["Rotation"] == nil then
-					definition["Rotation"] = {0,0,0}
+				if handDefinitions[componentName][handStr]["Rotation"] == nil then
+					handDefinitions[componentName][handStr]["Rotation"] = {0,0,0}
 				end
-				definition["Rotation"][axis] = definition["Rotation"][axis] + delta
-				local rotation = uevrUtils.rotator(definition["Rotation"][1], definition["Rotation"][2], definition["Rotation"][3])
+				handDefinitions[componentName][handStr]["Rotation"][axis] = handDefinitions[componentName][handStr]["Rotation"][axis] + delta
+				local rotation = uevrUtils.rotator(handDefinitions[componentName][handStr]["Rotation"][1], handDefinitions[componentName][handStr]["Rotation"][2], handDefinitions[componentName][handStr]["Rotation"][3])
 				local scale = getValidVector(definition, "Scale", {1,1,1})
 				local taperOffset = getValidVector(definition, "TaperOffset", {0,0,0})
+				local component = M.getHandComponent(hand, componentName)
 				animation.transformBoneToRoot(component, jointName, location, rotation, scale, taperOffset)		
+				M.printHandTranforms(handDefinitions[componentName][handStr])
 			else
 				M.print("Could not adjust bone in adjustRotation() because joint name is invalid" )
 			end
@@ -314,20 +340,23 @@ function M.adjustLocation(hand, axis, delta, componentName)
 	if componentName == "" then
 		M.print("Could not adjust rotation because component is undefined")
 	else	
-		local definition = handDefinitions[debugComponentName][hand]
+		local handStr = hand == 0 and "Left" or "Right"
+		local definition = handDefinitions[componentName][handStr]
 		if definition ~= nil then
 			local jointName = definition["Name"]
 			if jointName ~= nil and jointName ~= "" then
 				--local location = getValidVector(definition, "Location", {0,0,0})
-				if definition["Location"] == nil then
-					definition["Location"] = {0,0,0}
+				if handDefinitions[componentName][handStr]["Location"] == nil then
+					handDefinitions[componentName][handStr]["Location"] = {0,0,0}
 				end
-				definition["Location"][axis] = definition["Location"][axis] + delta
-				local location = uevrUtils.vector(definition["Location"][1], definition["Location"][2], definition["Location"][3])
+				handDefinitions[componentName][handStr]["Location"][axis] = handDefinitions[componentName][handStr]["Location"][axis] + delta
+				local location = uevrUtils.vector(handDefinitions[componentName][handStr]["Location"][1], handDefinitions[componentName][handStr]["Location"][2], handDefinitions[componentName][handStr]["Location"][3])
 				local rotation = getValidRotator(definition, "Rotation", {0,0,0})
 				local scale = getValidVector(definition, "Scale", {1,1,1})
 				local taperOffset = getValidVector(definition, "TaperOffset", {0,0,0})
+				local component = M.getHandComponent(hand, componentName)
 				animation.transformBoneToRoot(component, jointName, location, rotation, scale, taperOffset)		
+				M.printHandTranforms(handDefinitions[componentName][handStr])
 			else
 				M.print("Could not adjust bone in adjustRotation() because joint name is invalid" )
 			end
@@ -343,7 +372,8 @@ function M.debug(skeletalMeshComponent, hand, rightTargetJoint)
 	if hand == nil then hand = 1 end
 	if uevrUtils.validate_object(skeletalMeshComponent) ~= nil then
 		M.print("Creating hands from " .. skeletalMeshComponent:get_full_name() )	
-		local component = M.createComponent(skeletalMeshComponent, "Arms", hand, definition)
+		handComponents["Arms"] = {}
+		handComponents["Arms"][hand] = M.createComponent(skeletalMeshComponent, "Arms", hand, definition)
 
 		animation.logBoneNames(skeletalMeshComponent)
 		M.createSkeletalVisualization(hand)
