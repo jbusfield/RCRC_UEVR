@@ -4,6 +4,7 @@ uevrUtils.initUEVR(uevr)
 local flickerFixer = require("libs/flicker_fixer")
 local controllers = require("libs/controllers")
 local animation = require("libs/animation")
+--animation.setLogLevel(LogLevel.Debug)
 local hands = require("libs/hands")
 local weapons = require("addons/weapons")
 local handAnimations = require("addons/hand_animations")
@@ -33,58 +34,59 @@ local handParams =
 local knuckleBoneList = {24, 12, 15, 21, 18, 48, 36, 39, 45, 42}
 
 local isInCinematic = false
+local canCreateHands = false
+
+local g_wasSnapTurnEnabled = nil
+function disableSnapTurn(val)
+	if val then
+		print("Disabling snap turn\n")
+		if g_wasSnapTurnEnabled == nil then
+			g_wasSnapTurnEnabled = uevr.params.vr.is_snap_turn_enabled()
+		end
+		uevr.params.vr.set_snap_turn_enabled(false)		
+	else
+		if g_wasSnapTurnEnabled ~= nil then
+			print("Enabling snap turn\n")
+			uevr.params.vr.set_snap_turn_enabled(g_wasSnapTurnEnabled)
+		else
+			print("Snap turn did not need to be enabled\n")
+		end
+		g_wasSnapTurnEnabled = nil
+	end
+end
+
+function setFixedCamera(val)
+	uevr.params.vr.set_mod_value("UI_FollowView", val and "false" or "true")
+	uevr.params.vr.set_aim_method(val and 0 or 2)
+
+end
 
 local wasInCinematic = false
 function updateViewState()
 	if isInCinematic and not wasInCinematic then
 		uevrUtils.print("Start cinematic")
-		--uevr.params.vr.set_mod_value("VR_EnableGUI", "false")
-		-- uevrUtils.set_2D_mode(true)
-		uevr.params.vr.set_mod_value("UI_FollowView", "false")
-		uevr.params.vr.set_aim_method(0)
+		setFixedCamera(true)
 		hands.hideHands(true)
-		-- uevr.params.vr.set_mod_value("UI_Distance", "2.0")
-		-- uevr.params.vr.set_mod_value("UI_Size", "2.0")
+		disableSnapTurn(true)
+		uevr.params.vr.recenter_view()
 	elseif not isInCinematic and wasInCinematic then
 		uevrUtils.print("End cinematic")
-		--uevr.params.vr.set_mod_value("VR_EnableGUI", "true")
-		-- uevrUtils.set_2D_mode(false)
-		uevr.params.vr.set_mod_value("UI_FollowView", "true")
-		uevr.params.vr.set_aim_method(2)
+		setFixedCamera(false)
 		hands.hideHands(false)
-		-- uevr.params.vr.set_mod_value("UI_Distance", "0.8")
-		-- uevr.params.vr.set_mod_value("UI_Size", "0.50")
+		disableSnapTurn(false)
+		uevr.params.vr.recenter_view()
 	end
 	wasInCinematic = isInCinematic
-	
 end
 
 function handleLevelChange(level)
 	local levelName = level:get_full_name()
 	uevrUtils.print(levelName)
 	if  string.find(levelName, "MAP_StartingMap") then
-		uevr.params.vr.set_aim_method(0)
-		uevr.params.vr.set_mod_value("UI_FollowView", "false")
+		setFixedCamera(true)
 	else
-		uevr.params.vr.set_aim_method(2)
-		uevr.params.vr.set_mod_value("UI_FollowView", "true")
+		setFixedCamera(false)
 	end
-		
-end
-
-
-local canCreateHands = false
-function on_level_change(level)
-	uevrUtils.print("Level changed")
-	--flickerFixer.create()
-	controllers.onLevelChange()
-	controllers.createController(0)
-	controllers.createController(1)
-	controllers.createController(2)
-	canCreateHands = false
-	hands.reset()
-	wasInCinematic = false
-	handleLevelChange(level)
 	
 	--get rid of black bars in cinematics
 	for i, slot in ipairs(pawn["FPPHudWidget"]["WB HUD"]["CanvasPanel_0"]["Slots"]) do
@@ -101,14 +103,33 @@ function on_level_change(level)
 		end
 	end
 	uevr.api:get_player_controller(0).PlayerCameraManager.CachedCameraShakeMod:DisableModifier(true)
+	uevr.params.vr.recenter_view()
+		
+end
 
+
+function on_level_change(level)
+	uevrUtils.print("Level changed")
+	--flickerFixer.create()
+	controllers.onLevelChange()
+	controllers.createController(0)
+	controllers.createController(1)
+	controllers.createController(2)
+	canCreateHands = false
+	hands.reset()
+	wasInCinematic = false
+	disableSnapTurn(false)
+	handleLevelChange(level)
+	
 	delay(2000, function()
 		canCreateHands = true
 	end)
 end
 
 function on_weapon_change(activeWeapon)
+	uevrUtils.print("on_weapon_change called " .. (activeWeapon == nil and " with no weapon" or " with active weapon"))
 	if activeWeapon ~= nil then
+		animation.updateAnimation("right_hand", "right_grip_weapon", false)
 		animation.updateAnimation("right_hand", "right_grip_weapon", true)
 	else
 		animation.updateAnimation("right_hand", "right_grip", false)
@@ -118,11 +139,16 @@ end
 function on_lazy_poll()
 	if canCreateHands and not hands.exists() then
 		hands.create(pawn.Mesh, handParams, handAnimations)
-		local rightHand = hands.getHandComponent(1)
-		animation.setBoneSpaceLocalRotator(rightHand, "hand_r", uevrUtils.rotator(0, 0, -90))
+		animation.setBoneSpaceLocalRotator(hands.getHandComponent(1), "hand_r", uevrUtils.rotator(0, 0, -90))
+		animation.setBoneSpaceLocalRotator(hands.getHandComponent(0), "hand_l", uevrUtils.rotator(0, 0, -90))
 		uevrUtils.fixMeshFOV(hands.getHandComponent(0), "UsePanini", 0.0, true, true, false)
 		uevrUtils.fixMeshFOV(hands.getHandComponent(1), "UsePanini", 0.0, true, true, false)
+		if isInCinematic then
+			hands.hideHands(true)
+		end
+		
 		uevrUtils.fixMeshFOV(pawn.Mesh, "UsePanini", 0.0, true, true, false)
+		
 		local weaponMesh = uevrUtils.getValid(pawn,{"Weapon","WeaponMesh"})
 		if weaponMesh ~= nil then uevrUtils.fixMeshFOV(weaponMesh, "UsePanini", 0.0, true, true, false) end
 	end
@@ -152,6 +178,9 @@ local is_menu = false
 function on_post_engine_tick(engine, delta)
 	
 	if uevrUtils.getValid(pawn) ~= nil then
+		pawn.bFindCameraComponentWhenViewTarget = false
+		pawn.PlayerCameraShakeScale = 0
+		
 		if is_hidden ~= pawn.bHidden then print("is_hidden changed",pawn.bHidden) end
 		if is_load ~= pawn.bNetLoadOnClient then print("is_load changed",pawn.bNetLoadOnClient) end
 		if detective ~= pawn.DetectiveModeComponent.bIsActive then print("detective changed",pawn.DetectiveModeComponent.bIsActive) end
@@ -178,18 +207,33 @@ function on_post_engine_tick(engine, delta)
 	end
 	
 	updateViewState()
-	weapons.attachWeapon(uevrUtils.getValid(pawn,{"Weapon","WeaponMesh"}))
+	
+	local weaponMesh = uevrUtils.getValid(pawn,{"Weapon","WeaponMesh"})
+	if weaponMesh ~= nil then 
+		weapons.attachWeapon(weaponMesh)
+		local weaponConfig = uevrUtils.getValid(pawn,{"Weapon","FPPWeaponConfig"})
+		if weaponConfig ~= nil then
+			weaponConfig.bSwayWeapon = false
+			weaponConfig.bUseRecoil = false
+			weaponConfig.bUseSpread = false
+			weaponConfig.AimingSwayX = 0
+			weaponConfig.HipsSwayX = 0
+		end
+	end
 
 	local mesh = uevrUtils.getValid(pawn, {"Mesh"})
-	if mesh ~= nil then mesh:call("SetRenderInMainPass", false) end
-	-- if mesh ~= nil and mesh.bVisible == true then
-		-- mesh:SetVisibility(false,false)
-		-- local activeWeapon = weapons.getActiveWeapon()
-		-- if uevrUtils.getValid(activeWeapon) ~= nil then
-			-- activeWeapon:SetVisibility(true, true)
-		-- end
-	-- end
+	if mesh ~= nil then 
+		local breachOverlapActor = uevrUtils.getValid(pawn, {"BreachOverlapActor"})
+		if breachOverlapActor ~= nil and breachOverlapActor.bBreachingStarted then
+			mesh:call("SetRenderInMainPass", true)
+		else
+			mesh:call("SetRenderInMainPass", false) 
+		end
+	end
 
+	-- local weaponMesh = uevrUtils.getValid(pawn,{"Weapon","WeaponMesh"})
+	-- if weaponMesh ~= nil then 
+	-- uevrUtils.fixMeshFOV(weaponMesh, "UsePanini", 0.0, true, true, false) end
 
 end
 
@@ -199,7 +243,7 @@ register_key_bind("F1", function()
 	--animation.logBoneNames(pawn.Mesh)
 	--animation.getHierarchyForBone(pawn.Mesh, "lowerarm_r")
 	--hands.createSkeletalVisualization()
-	hands.enableHandAdjustments(knuckleBoneList)
+	--hands.enableHandAdjustments(knuckleBoneList)
 	
 	-- local component = hands.getHandComponent(1)
 	-- component:CopyPoseFromSkeletalComponent(pawn.Mesh)

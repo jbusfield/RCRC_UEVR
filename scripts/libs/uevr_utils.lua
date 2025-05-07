@@ -316,6 +316,23 @@ kismet_math_library = nil
 kismet_string_library = nil 
 --uevr = nil
 -------------------------------
+-- global enums
+LogLevel = {
+    Off = 0,
+    Critical = 1,
+    Error = 2,
+    Warning = 3,
+    Info = 4,
+    Debug = 5,
+    Trace = 6,
+    Ignore = 99,
+}
+
+Handed = {
+	Left = 0, 
+	Right = 1
+}
+-------------------------------
 
 local M = {}
 
@@ -520,18 +537,7 @@ function M.initUEVR(UEVR)
 	if UEVRReady ~= nil then UEVRReady(uevr) end
 end
 
-LogLevel = {
-    Off = 0,
-    Critical = 1,
-    Error = 2,
-    Warning = 3,
-    Info = 4,
-    Debug = 5,
-    Trace = 6,
-    Ignore = 99,
-}
-local currentLogLevel = LogLevel.Off
-
+local currentLogLevel = LogLevel.Error
 function M.enableDebug(val)
 	currentLogLevel = val and LogLevel.Debug or LogLevel.Off
 end
