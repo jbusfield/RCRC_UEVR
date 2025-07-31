@@ -19,7 +19,7 @@ end
 function M.createPoseableComponent(skeletalMeshComponent, parent)
 	local poseableComponent = nil
 	if skeletalMeshComponent ~= nil then
-		poseableComponent = uevrUtils.createPoseableMeshFromSkeletalMesh(skeletalMeshComponent, parent)
+		poseableComponent = uevrUtils.createPoseableMeshFromSkeletalMesh(skeletalMeshComponent, {parent=parent, showDebug = currentLogLevel==LogLevel.Debug})
 						
 		-- poseableComponent.SkeletalMesh.PositiveBoundsExtension.X = 100
 		-- poseableComponent.SkeletalMesh.PositiveBoundsExtension.Y = 100
@@ -102,8 +102,12 @@ function M.getBoneSpaceLocalRotator(component, boneFName, fromBoneSpace)
 		local parentTransform = component:GetBoneTransformByName(component:GetParentBone(boneFName), fromBoneSpace)
 		local wTranform = component:GetBoneTransformByName(boneFName, fromBoneSpace)
 		local localTransform = kismet_math_library:ComposeTransforms(wTranform, kismet_math_library:InvertTransform(parentTransform))
-		local localRotator = uevrUtils.rotator(0, 0, 0)
-		kismet_math_library:BreakTransform(localTransform,temp_vec3, localRotator, temp_vec3)
+		--fix for non-working BreakTransform in robocop UB
+		local localRotator = kismet_math_library:TransformRotation(localTransform, uevrUtils.rotator(0,0,0))
+--		print("here", localRotator.pitch, localRotator.Pitch)
+--		local localRotator = uevrUtils.rotator(0, 0, 0)
+--		kismet_math_library:BreakTransform(localTransform,temp_vec3, localRotator, temp_vec3)
+--		print("here 2", localRotator.pitch, localRotator.Pitch)
 		return localRotator, parentTransform
 	end
 	return nil, nil
@@ -119,22 +123,15 @@ function M.getBoneSpaceLocalTransform(component, boneFName, fromBoneSpace)
 		local localRotation = uevrUtils.rotator(0, 0, 0)
 		local localScale = uevrUtils.vector(0, 0, 0)
 		kismet_math_library:BreakTransform(localTransform, localLocation, localRotation, localScale)
+		--fix for non-working BreakTransform in robocop UB
+		localRotation = kismet_math_library:TransformRotation(localTransform, uevrUtils.rotator(0,0,0))
 		return localRotation, localLocation, localScale, parentTransform
 	end
 	return nil, nil, nil, nil
 end
 
 function M.getChildSkeletalMeshComponent(parent, name)
-	local skeletalMeshComponent = nil
-	if uevrUtils.validate_object(parent) ~= nil and name ~= nil then
-		local children = parent.AttachChildren
-		for i, child in ipairs(children) do
-			if  string.find(child:get_full_name(), name) then
-				skeletalMeshComponent = child
-			end
-		end
-	end
-	return skeletalMeshComponent
+	return uevrUtils.getChildComponent(parent, name)
 end
 
 --if you know the parent transform then pass it in to save a step
@@ -143,7 +140,9 @@ function M.setBoneSpaceLocalRotator(component, boneFName, localRotator, toBoneSp
 		if component.GetParentBone ~= nil then
 			if toBoneSpace == nil then toBoneSpace = 0 end
 			if pTransform == nil then pTransform = component:GetBoneTransformByName(component:GetParentBone(boneFName), toBoneSpace) end
+			--print("Before",localRotator.Pitch,localRotator.Yaw,localRotator.Roll)
 			local wRotator = kismet_math_library:TransformRotation(pTransform, localRotator);
+			--print("After",wRotator.Pitch,wRotator.Yaw,wRotator.Roll)
 			component:SetBoneRotationByName(boneFName, wRotator, toBoneSpace)
 		else
 			M.print("component.GetParentBone was nil for " .. component:get_full_name(), LogLevel.Warning)
@@ -171,7 +170,7 @@ function M.animate(animID, animName, val)
 	local animation = animations[animID]
 	if animation ~= nil then
 		local component = animation["component"]
-		if component ~= nil then
+		if component ~= nil and animation["definitions"] ~= nil and animation["definitions"]["positions"] ~= nil then
 			local boneSpace = 0
 			local subAnim = animation["definitions"]["positions"][animName]
 			if subAnim ~= nil then
@@ -179,7 +178,34 @@ function M.animate(animID, animName, val)
 				if anim ~= nil then
 					for boneName, angles in pairs(anim) do
 						local localRotator = uevrUtils.rotator(angles[1], angles[2], angles[3])
-						M.print("Animating " .. boneName, LogLevel.Info)
+						M.print("Animating " .. boneName .. " " .. val, LogLevel.Info)
+						M.setBoneSpaceLocalRotator(component, uevrUtils.fname_from_string(boneName), localRotator, boneSpace)
+					end
+				end
+			end
+		else
+			M.print("Component was nil in animate", LogLevel.Warning)
+		end
+	end
+end
+
+function lerpAnimation(animID, animName, alpha)
+	--M.print("Called lerp with " .. animID .. " " .. animName .. " " .. alpha, LogLevel.Info)
+	local animation = animations[animID]
+	if animation ~= nil then
+		local component = animation["component"]
+		if component ~= nil and animation["definitions"] ~= nil and animation["definitions"]["positions"] ~= nil then
+			local boneSpace = 0
+			local subAnim = animation["definitions"]["positions"][animName]
+			if subAnim ~= nil then
+				local startPose = subAnim["off"]
+				local endPose = subAnim["on"]
+				if startPose ~= nil and endPose ~= nil then
+					for boneName, angles in pairs(startPose) do
+						local startRotator = uevrUtils.rotator(angles[1], angles[2], angles[3])
+						local endRotator = uevrUtils.rotator(endPose[boneName][1], endPose[boneName][2], endPose[boneName][3])
+						--M.print("Lerping " .. boneName .. " " .. alpha, LogLevel.Info)
+						local localRotator = kismet_math_library:RLerp(startRotator, endRotator, alpha, true)
 						M.setBoneSpaceLocalRotator(component, uevrUtils.fname_from_string(boneName), localRotator, boneSpace)
 					end
 				end
@@ -191,15 +217,17 @@ function M.animate(animID, animName, val)
 end
 
 function M.pose(animID, poseID)
-	M.print("Called pose", LogLevel.Debug)
+	M.print("Called pose " .. poseID .. " for animationID " .. animID, LogLevel.Debug)
 	if animations ~= nil and animations[animID] ~= nil  and animations[animID]["definitions"]["poses"][poseID] ~= nil then
-		M.print("In pose")
 		local pose = animations[animID]["definitions"]["poses"][poseID]
-		for i, positions in ipairs(pose) do
-			local animName = positions[1]
-			local val = positions[2]
-			M.animate(animID, animName, val)
-			M.print("Got pose " .. i .. " " .. animID .. " " .. animName .. " " .. val, LogLevel.Info)
+		if pose ~= nil then
+			M.print("Found pose " .. poseID, LogLevel.Debug)
+			for i, positions in ipairs(pose) do
+				local animName = positions[1]
+				local val = positions[2]
+				M.print("Animating pose index " .. i .. " " .. animID .. " " .. animName .. " " .. val, LogLevel.Info)
+				M.animate(animID, animName, val)
+			end
 		end
 	end
 end
@@ -208,7 +236,7 @@ end
 --initial["right_hand"]["thumb_01_r"]["location"] = {-4.7485139256969, 1.6324441527213, 3.5768162332388}
 
 function M.initialize(animID, skeletalMeshComponent)
-	if animations ~= nil and animations[animID] ~= nil and animations[animID]["definitions"]["initialTranform"] ~= nil then
+	if animations ~= nil and animations[animID] ~= nil and animations[animID]["definitions"] ~= nil and animations[animID]["definitions"]["initialTranform"] ~= nil then
 		local initialTransform = animations[animID]["definitions"]["initialTranform"]
 		if initialTransform[animID] ~= nil then
 			for boneName, transforms in pairs(initialTransform[animID]) do				
@@ -228,7 +256,7 @@ function M.initialize(animID, skeletalMeshComponent)
 			end		
 		end
 	else
-		M.print("Initial tranform definitions not found", LogLevel.Warning)
+		M.print("Initial tranform definitions not found", LogLevel.Info)
 	end
 end
 
@@ -238,8 +266,18 @@ function M.add(animID, skeletalMeshComponent, animationDefinitions)
 	animations[animID]["definitions"] = animationDefinitions
 end
 
+-- function lerpCallback(animID, animName, alpha)
+	-- print(animID, animName, alpha)
+	-- lerpAnimation(animID, animName, alpha)
+-- end
+
+local function lerpCallback(alpha, progress, userdata)
+	--print(alpha, progress, userdata.animID, userdata.animName,"\n")
+	lerpAnimation(userdata.animID, userdata.animName, alpha)
+end
+
 local animStates = {}
-function M.updateAnimation(animID, animName, isPressed)
+function M.updateAnimation(animID, animName, isPressed, lerpParam)
 	if animStates[animID] == nil then 
 		animStates[animID] = {} 
 		if animStates[animID][animName] == nil then 
@@ -247,17 +285,32 @@ function M.updateAnimation(animID, animName, isPressed)
 		end
 	end
 	if isPressed then
-		if not animStates[animID][animName] then
-			M.animate(animID, animName, "on")
+		if not animStates[animID][animName] == true then
+			if lerpParam ~= nil then	
+				uevrUtils.lerp(animID.."-"..animName, lerpParam.startAlpha == nil and 0.0 or lerpParam.startAlpha, lerpParam.endAlpha == nil and 1.0 or lerpParam.endAlpha, lerpParam.duration == nil and 0.3 or lerpParam.duration, {animID = animID, animName = animName}, lerpCallback)
+			else
+				M.animate(animID, animName, "on")
+			end
 		end
 		animStates[animID][animName] = true
 	else
-		if animStates[animID][animName] then
-			M.animate(animID, animName, "off")
+		if animStates[animID][animName] == true then
+			if lerpParam ~= nil then	
+				uevrUtils.lerp(animID.."-"..animName, lerpParam.startAlpha == nil and 1.0 or lerpParam.startAlpha, lerpParam.endAlpha == nil and 0.0 or lerpParam.endAlpha, lerpParam.duration == nil and 0.3 or lerpParam.duration, {animID = animID, animName = animName}, lerpCallback)
+			else
+				M.animate(animID, animName, "off")
+			end
 		end
 		animStates[animID][animName] = false
 	end
-end 
+end
+
+function M.resetAnimation(animID, animName, isPressed)
+	if animStates[animID] == nil then 
+		animStates[animID] = {} 
+	end
+	animStates[animID][animName] = isPressed 
+end
 
 -- creates a set of spheres that are positioned at each bone joint in order to visualize the bone hierarchy
 function M.createSkeletalVisualization(skeletalMeshComponent, scale)
@@ -363,20 +416,43 @@ function M.logDescendantBoneTransforms(component, targetBoneName, includeRotatio
 			local str = ""
 			local rotation, location, scale = M.getBoneSpaceLocalTransform(component, childFName)
 			if includeRotation then
-				str = str .. "rotation = {" .. rotation.Pitch .. ", " .. rotation.Yaw .. ", " .. rotation.Roll .. "}"
+				str = str .. "rotation = {" .. cleanFloat(rotation.Pitch) .. ", " .. cleanFloat(rotation.Yaw) .. ", " .. cleanFloat(rotation.Roll) .. "}"
 			end
 			if includeLocation then
 				if str ~= "" then str = str .. ", " end
-				str = str .. "location = {" .. location.X .. ", " .. location.Y .. ", " .. location.Z .. "}" 
+				str = str .. "location = {" .. cleanFloat(location.X) .. ", " .. cleanFloat(location.Y) .. ", " .. cleanFloat(location.Z) .. "}" 
 			end
 			if includeScale then
 				if str ~= "" then str = str .. ", " end
-				str = str .. "scale = {" .. scale.X .. ", " .. scale.Y .. ", " .. scale.Z .. "}" 
+				str = str .. "scale = {" .. cleanFloat(scale.X) .. ", " .. cleanFloat(scale.Y) .. ", " .. cleanFloat(scale.Z) .. "}" 
 			end
 			text = text .. "[\"" .. childFName:to_string() .. "\"] = {" .. str .. "}" .. "\n"
 		end
 	end
 	M.print(text, LogLevel.Critical)
+end
+
+function cleanFloat(num)
+	if num < 0.0001 and num > -0.0001 then num = 0 end
+	num = math.floor(num * 10000) / 10000
+	return num
+end
+
+function M.getBoneSpaceLocalTransform(component, boneFName, fromBoneSpace)
+	if uevrUtils.validate_object(component) ~= nil and boneFName ~= nil then
+		if fromBoneSpace == nil then fromBoneSpace = 0 end
+		local parentTransform = component:GetBoneTransformByName(component:GetParentBone(boneFName), fromBoneSpace)
+		local wTranform = component:GetBoneTransformByName(boneFName, fromBoneSpace)
+		local localTransform = kismet_math_library:ComposeTransforms(wTranform, kismet_math_library:InvertTransform(parentTransform))
+		local localLocation = uevrUtils.vector(0, 0, 0)
+		local localRotation = uevrUtils.rotator(0, 0, 0)
+		local localScale = uevrUtils.vector(0, 0, 0)
+		kismet_math_library:BreakTransform(localTransform, localLocation, localRotation, localScale)
+		--fix for non-working BreakTransform in robocop UB
+		localRotation = kismet_math_library:TransformRotation(localTransform, uevrUtils.rotator(0,0,0))
+		return localRotation, localLocation, localScale, parentTransform
+	end
+	return nil, nil, nil, nil
 end
 
 function M.logBoneRotators(component, boneList, includeRotation, includeLocation, includeScale)
@@ -398,26 +474,30 @@ function M.logBoneRotators(component, boneList, includeRotation, includeLocation
 			for j = 1, #boneList do
 				for index = 1 , 3 do
 					local fName = component:GetBoneName(boneList[j] + index - 1)
+					local rotation, location, scale = M.getBoneSpaceLocalTransform(component, fName, boneSpace)
 					
-					local pTransform = component:GetBoneTransformByName(component:GetParentBone(fName), boneSpace)
-					local wTranform = component:GetBoneTransformByName(fName, boneSpace)
-					--local localTransform = kismet_math_library:InvertTransform(pTransform) * wTranform
-					--local localTransform = kismet_math_library:ComposeTransforms(kismet_math_library:InvertTransform(pTransform), wTranform)
-					local localTransform = kismet_math_library:ComposeTransforms(wTranform, kismet_math_library:InvertTransform(pTransform))
-					local localRotator = uevrUtils.rotator(0, 0, 0)
-					local localVector = uevrUtils.vector(0, 0, 0)
-					local localScale = uevrUtils.vector(1, 1, 1)
-					--kismet_math_library:BreakTransform(localTransform,temp_vec3, localRotator, temp_vec3)
-					--print("Local Space1",index, localRotator.Pitch, localRotator.Yaw, localRotator.Roll)
-					kismet_math_library:BreakTransform(localTransform, localVector, localRotator, localScale)
+					-- local pTransform = component:GetBoneTransformByName(component:GetParentBone(fName), boneSpace)
+					-- local wTranform = component:GetBoneTransformByName(fName, boneSpace)
+					-- --local localTransform = kismet_math_library:InvertTransform(pTransform) * wTranform
+					-- --local localTransform = kismet_math_library:ComposeTransforms(kismet_math_library:InvertTransform(pTransform), wTranform)
+					-- local localTransform = kismet_math_library:ComposeTransforms(wTranform, kismet_math_library:InvertTransform(pTransform))
+					-- local localRotator = uevrUtils.rotator(0, 0, 0)
+					-- local localVector = uevrUtils.vector(0, 0, 0)
+					-- local localScale = uevrUtils.vector(1, 1, 1)
+					-- --kismet_math_library:BreakTransform(localTransform,temp_vec3, localRotator, temp_vec3)
+					-- --print("Local Space1",index, localRotator.Pitch, localRotator.Yaw, localRotator.Roll)
+					-- kismet_math_library:BreakTransform(localTransform, localVector, localRotator, localScale)
+					-- --fix for non-working BreakTransform in robocop UB
+					-- localRotator = kismet_math_library:TransformRotation(localTransform, uevrUtils.rotator(0,0,0))
+					
 					if includeRotation then
-						text = text .. "[\"" .. fName:to_string() .. "\"] = {" .. localRotator.Pitch .. ", " .. localRotator.Yaw .. ", " .. localRotator.Roll .. "}" .. "\n"
+						text = text .. "[\"" .. fName:to_string() .. "\"] = {" .. cleanFloat(rotation.Pitch) .. ", " .. cleanFloat(rotation.Yaw) .. ", " .. cleanFloat(rotation.Roll) .. "}" .. "\n"
 					end
 					if includeLocation then
-						text = text .. "[\"" .. fName:to_string() .. "\"] = {" .. localVector.X .. ", " .. localVector.Y .. ", " .. localVector.Z .. "}" .. "\n"
+						text = text .. "[\"" .. fName:to_string() .. "\"] = {" .. cleanFloat(location.X) .. ", " .. cleanFloat(location.Y) .. ", " .. cleanFloat(location.Z) .. "}" .. "\n"
 					end
 					if includeScale then
-						text = text .. "[\"" .. fName:to_string() .. "\"] = {" .. localScale.X .. ", " .. localScale.Y .. ", " .. localScale.Z .. "}" .. "\n"
+						text = text .. "[\"" .. fName:to_string() .. "\"] = {" .. cleanFloat(scale.X) .. ", " .. cleanFloat(scale.Y) .. ", " .. cleanFloat(scale.Z) .. "}" .. "\n"
 					end
 					--["RightHandIndex1_JNT"] = {13.954909324646, 19.658151626587, 12.959843635559}
 					-- local wRotator = pc:GetBoneRotationByName(pc:GetBoneName(index), boneSpace)
