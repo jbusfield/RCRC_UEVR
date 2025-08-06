@@ -35,6 +35,7 @@ local grabbedMapping = {
 	{name="BikersBike", pos={-87, 28.2, 13}, rot={0.0, 90.0, 5.0}},	
 	{name="ThrowableHammer", pos={0.0, -45.0, 0.0}, rot={12.0, 0.0, 0.0}},	
 	{name="SM_chair_02_Throwable", pos={0.0, 30.2, 0.0}, rot={0, 0, 0}},
+	{name="Throwable_Chair1", pos={-19.2, 10.8, 22.6}, rot={0, 34, 0}},
 	{staticmesh="SM_Basketball_01a", pos={9.4, 12.2, 4.2}, rot={0.0, 0.0, 0.0}},
 	{staticmesh="SM_Barbells_01", pos={0.6, 0.2, -0.8}, rot={0.0, -14.6, 90}},
 	{staticmesh="SM_Barbells_02", pos={0.6, 0.2, -0.8}, rot={0.0, -14.6, 90}},
@@ -113,9 +114,17 @@ end
 local hasGrabbed = false
 local grabbedState = nil
 local originalGrabbedComponent = nil
+local lastDisabledComponent = nil
 local clonedGrabbedComponent = nil
-function M.checkGrabbedComponent(handedness)
-	local grabbedComponent = uevrUtils.getValid(pawn,{"PhysicsHandle","GrabbedComponent"})
+function M.checkGrabbedComponent(handedness, disable)
+	local grabbedComponent = nil
+	if disable == false then 
+		grabbedComponent = uevrUtils.getValid(pawn,{"PhysicsHandle","GrabbedComponent"})
+		--do no allow regrabbing a component that was disabled
+		if lastDisabledComponent == grabbedComponent then
+			grabbedComponent = nil
+		end
+	end
 	if grabbedComponent ~= nil and hasGrabbed == false then 
 		M.print("Grabbed component "	.. grabbedComponent:get_full_name())	
 		if grabbedComponent.StaticMesh ~= nil then
@@ -128,10 +137,10 @@ function M.checkGrabbedComponent(handedness)
 			pawn.GrabbingMesh:SetVisibility(false, true)
 		end
 		grabbedComponent:SetVisibility(false, true)
-		local grabClone = uevrUtils.cloneComponent(grabbedComponent)
+		clonedGrabbedComponent = uevrUtils.cloneComponent(grabbedComponent)
 		
-		if grabClone ~= nil then
-			local state = UEVR_UObjectHook.get_or_add_motion_controller_state(grabClone)
+		if clonedGrabbedComponent ~= nil then
+			local state = UEVR_UObjectHook.get_or_add_motion_controller_state(clonedGrabbedComponent)
 			state:set_hand(handedness)
 			state:set_permanent(false)
 			local rot = getGrabbedOffset(grabbedComponent, 2)
@@ -139,17 +148,20 @@ function M.checkGrabbedComponent(handedness)
 			state:set_location_offset(Vector3f.new(loc.X, loc.Y, loc.Z)) 
 			state:set_rotation_offset(Vector3f.new( math.rad(rot.X), math.rad(rot.Y),  math.rad(rot.Z)))
 
-			uevrUtils.fixMeshFOV(grabClone, "UsePanini", 0.0, true, true, true) 
+			uevrUtils.fixMeshFOV(clonedGrabbedComponent, "UsePanini", 0.0, true, true, true) 
 			
 			grabbedState = state
-			clonedGrabbedComponent = grabClone
 		end
 		originalGrabbedComponent = grabbedComponent
 	end
 	if grabbedComponent == nil and hasGrabbed == true then 
-		if originalGrabbedComponent.SetVisibility ~= nil then
+		if disable then 
+			lastDisabledComponent = originalGrabbedComponent
+		end
+		if not disable and uevrUtils.getValid(originalGrabbedComponent) ~= nil and originalGrabbedComponent.SetVisibility ~= nil then
 			originalGrabbedComponent:SetVisibility(true)
 		end
+		if clonedGrabbedComponent ~= nil then clonedGrabbedComponent:SetVisibility(false) end
 		uevrUtils.destroyComponent(clonedGrabbedComponent, true, true)
 		originalGrabbedComponent = nil
 		clonedGrabbedComponent = nil
@@ -168,6 +180,10 @@ function M.updateGrabbedOrientation()
 		grabbedState:set_location_offset(Vector3f.new(loc.X, loc.Y, loc.Z)) 
 		grabbedState:set_rotation_offset(Vector3f.new( math.rad(rot.X), math.rad(rot.Y),  math.rad(rot.Z)))
 	end
+end
+
+function M.isGrabbing()
+	return hasGrabbed
 end
 
 return M

@@ -60,3 +60,24 @@ AimingCameraModifier /Game/Maps/DLC/DLC_L09_ED209_ALL.DLC_L09_ED209_ALL.Persiste
 RotationLimitCameraModifier /Game/Maps/DLC/DLC_L09_ED209_ALL.DLC_L09_ED209_ALL.PersistentLevel.BP_MyPlayerCameraManager_C_0.RotationLimitCameraModifier_0       disabled
 
 ]]--
+	--Handled in camera_modifiers.lua
+	-- --Fix the shooting gallery
+	-- local modifiers = uevrUtils.find_all_instances("Class /Script/Game.RotationLimitCameraModifier", false)
+	-- for i, mesh in ipairs(modifiers) do
+		-- if mesh:get_fname():to_string() == "RotationLimitCameraModifier_0" then
+			-- mesh:DisableModifier(true)
+			-- break
+		-- end
+	-- end
+	--uevr.api:get_player_controller(0).PlayerCameraManager.CachedCameraShakeMod:DisableModifier(true)
+	
+	-- --Turn off any auto-aiming
+	-- local modifiers = uevrUtils.find_all_instances("Class /Script/Engine.CameraModifier", false)
+	-- print("Here",modifiers)
+	-- if modifiers ~= nil then
+		-- print(#modifiers, "modifiers turned off")
+		-- for i, mod in ipairs(modifiers) do
+			-- mod:DisableModifier(true)
+			-- print(mod:get_full_name(), "disabled")
+		-- end
+	-- end

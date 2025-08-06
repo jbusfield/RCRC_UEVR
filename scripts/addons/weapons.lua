@@ -145,7 +145,7 @@ function getWeaponOffset(weapon, offsetType) -- 1 position, 2 rotation
 	if uevrUtils.getValid(weapon) ~= nil and (offsetType == 1 or offsetType == 2) then
 		local ext = {"_pos", "_rot"}
 		local weaponName = weapon:get_full_name()
-		print("Getting offset for", weaponName, offsetType)
+		M.print("Getting offset for " .. weaponName .. " " .. offsetType)
 		for i = 1, #weaponMapping do
 			local name = weaponMapping[i]["name"]
 			if string.find(weaponName, name) then
@@ -264,7 +264,7 @@ function M.update(currentWeapon, hand)
 	if hand == nil then hand = Handed.Right end
 	local lastWeapon = activeWeapon
 	if hand ~= activeHand or (uevrUtils.validate_object(activeWeapon) ~= nil and uevrUtils.validate_object(currentWeapon) ~= nil and activeWeapon ~= currentWeapon) then
-		print("Disconnecting weapon")
+		M.print("Disconnecting weapon")
 		UEVR_UObjectHook.remove_motion_controller_state(activeWeapon)
 		activeWeapon = nil
 	end
@@ -288,7 +288,7 @@ function M.update(currentWeapon, hand)
 	
 	if lastWeapon ~= activeWeapon then
 		if on_weapon_change ~= nil then
-			on_weapon_change(activeWeapon)
+			on_weapon_change(activeWeapon,	activeWeapon ~= nil and not string.find(activeWeapon:get_full_name(), "NoWeapon"))
 		end
 		
 		updateScope(activeWeapon)
@@ -302,19 +302,19 @@ function M.connectToSocket(pawn, handComponent, socketName, offset)
 	local lastWeapon = activeWeapon
 	local currentWeapon = uevrUtils.getValid(pawn,{"Weapon","WeaponMesh"})
 	if uevrUtils.validate_object(activeWeapon) ~= nil and currentWeapon ~= nil and activeWeapon ~= currentWeapon then
-		print("Disconnecting weapon")
+		M.print("Disconnecting weapon")
 		activeWeapon = nil
 	end
 
 
 	if currentWeapon ~= nil and not string.find(pawn.Weapon:get_full_name(), "NoWeapon") and activeWeapon ~= currentWeapon then
-	print("Attaching weapon to socket")
+	M.print("Attaching weapon to socket")
 		currentWeapon:K2_AttachTo(handComponent, uevrUtils.fname_from_string(socketName), 0, false)
 		uevrUtils.set_component_relative_transform(currentWeapon, offset, offset)	
 		activeWeapon = currentWeapon			
 	end
 	if lastWeapon ~= activeWeapon then
-		print("Weapon changed")
+		M.print("Weapon changed")
 
 		if on_weapon_change ~= nil then
 			on_weapon_change(activeWeapon)
