@@ -1,5 +1,5 @@
 # RCRC_UEVR
-A VR first person mod for Robocop: Rogue City and Robocop: Rogue City Unfinished Business using UEVR
+A VR first person mod for UEVR when playing Robocop: Rogue City and Robocop: Rogue City Unfinished Business
 
 ### Contributors
 Portions of code based on original work of CJ117
